@@ -1,0 +1,33 @@
+{
+  "workflows": [
+    {
+      "name": "CustomerSupportFineTuningTrainingPipeline",
+      "tasks": [
+        {
+          "task_name": "training_configs_loader",
+          "class_path": "training.wf_tasks.setup.training_configs_loader_task.TrainingConfigsLoaderTask"
+        },
+        {
+          "task_name": "data_preprocessing",
+          "class_path": "training.wf_tasks.cleansing.data_preprocessing_task.DataPreProcessingTask"
+        },
+        {
+          "task_name": "feature_engineering",
+          "class_path": "training.wf_tasks.evaluation.feature_engineering_task.FeatureEngineeringTask"
+        },
+        {
+          "task_name": "model_training",
+          "class_path": "training.wf_tasks.modeling.model_training_task.ModelTrainingTask"
+        },
+        {
+          "task_name": "model_evaluation",
+          "class_path": "training.wf_tasks.evaluation.model_evaluation_task.ModelEvaluationTask"
+        },
+        {
+          "task_name": "model_deployment",
+          "class_path": "training.wf_tasks.deployment.model_deployment_task.ModelDeploymentTask"
+        }
+      ]
+    }
+  ]
+}

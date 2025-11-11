@@ -30,3 +30,8 @@ class WfResponses:
     RETRY_CURRENT_STEP = 113
     ABORT_WORKFLOW = 114
     COMPLETE_WORKFLOW = 115
+
+
+class TrainingConstants:
+    DEFAULT_TRAINING_PIPELINE_NAME = "CustomerSupportFineTuningTrainingPipeline"
+    KEY_TRAINING_PIPELINE_NAME = "TRAINING_PIPELINE_NAME"

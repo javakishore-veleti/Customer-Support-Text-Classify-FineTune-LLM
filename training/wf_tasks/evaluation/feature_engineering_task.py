@@ -4,9 +4,13 @@ from training.dtos import TrainingReqDTO, TrainingResDTO
 from app_common.app_constants import WfResponses
 
 
-class TrainingConfigsTask(TrainingPipelineTask):
+class FeatureEngineeringTask(TrainingPipelineTask):
     def __init__(self):
         super().__init__()
+
+    def name(self) -> str:
+        """Unique task name identifier."""
+        return "feature_engineering"
 
     @overrides
     # noinspection PyMethodMayBeStatic
