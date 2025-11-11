@@ -44,6 +44,7 @@ class AppConfigs:
 
     def __init__(self):
         self._configs = {}
+        self.configs_loaded: bool = False
 
     def __str__(self):
         return f"AppConfigs({self._configs})"
@@ -76,12 +77,17 @@ class AppConfigs:
     # Loaders and Accessors
     # ------------------------------
     def load_app_configs(self, dotenv_path: str = "../.env") -> "AppConfigs":
+        if self.configs_loaded:
+            LOGGER.info("App configurations already loaded. Skipping reload.")
+            return self
+
         LOGGER.info(f"STARTED Loading application configurations from {dotenv_path} and environment variables.")
         load_dotenv(dotenv_path)
 
         for key, value in os.environ.items():
             self._configs[key] = value
 
+        self.configs_loaded = True
         LOGGER.info(f"Loaded {len(self._configs)} configuration entries.")
         return self
 
