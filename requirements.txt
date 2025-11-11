@@ -1,0 +1,31 @@
+# ML Libraries
+torch
+datasets
+transformers
+tokenizers
+
+# Training and Evaulation
+scikit-learn
+accelerate
+evaluate
+
+# Data Processing
+pandas
+numpy
+
+# Visualization
+matplotlib
+plotly
+seaborn
+
+
+# API Development
+fastapi
+uvicorn
+pydantic
+
+#Utilties
+tqdm
+requests
+overrides
+python-dotenv
