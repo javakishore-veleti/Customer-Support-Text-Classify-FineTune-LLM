@@ -134,3 +134,9 @@ class AppConfigs:
 
     def all(self):
         return dict(self._configs)
+
+    def get_float(self, key: str, default: float = 0.0) -> float:
+        try:
+            return float(self.get_str(key, str(default)))
+        except (ValueError, TypeError):
+            return default

@@ -19,6 +19,21 @@
           "class_path": "training.wf_tasks.cleansing.training_data_labels_mapper.TrainingDataLabelsMapperTask"
         },
         {
+          "purpose": "Splits each worksheet's DataFrame into train/test subsets using configurable ratios",
+          "task_name": "training_data_splitter",
+          "class_path": "training.wf_tasks.modeling.training_data_splitter.TrainingDataSplitterTask"
+        },
+        {
+          "purpose": "Tokenizes all configured text columns (from .env) for every worksheet.",
+          "task_name": "training_data_tokenizer",
+          "class_path": "training.wf_tasks.modeling.training_data_tokenizer.TrainingTokenizerTask"
+        },
+        {
+          "purpose": "Fine-tunes DistilBERT (or configured model) iteratively for each Excel sheet.",
+          "task_name": "training_model_fine_tune",
+          "class_path": "training.wf_tasks.modeling.training_data_fine_tuning.TrainingModelFineTuneTask"
+        },
+        {
           "task_name": "data_preprocessing",
           "class_path": "training.wf_tasks.cleansing.data_preprocessing_task.DataPreProcessingTask"
         },
