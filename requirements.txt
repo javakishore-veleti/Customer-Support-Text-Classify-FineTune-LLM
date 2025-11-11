@@ -11,6 +11,7 @@ evaluate
 
 # Data Processing
 pandas
+openpyxl
 numpy
 
 # Visualization
