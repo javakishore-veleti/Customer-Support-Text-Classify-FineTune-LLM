@@ -9,7 +9,7 @@ from training.utils.training_utils import TrainingUtils
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     handlers=[logging.StreamHandler(),
-                              logging.FileHandler('app.log')])
+                              logging.FileHandler('../app.log')])
 
 LOGGER = logging.getLogger(__name__)
 
