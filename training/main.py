@@ -3,6 +3,8 @@ from training.dtos import TrainingReqDTO, TrainingResDTO
 from training.training_pipeline import TrainingPipelineImpl
 import logging
 
+from training.utils.training_utils import TrainingUtils
+
 # Configure the root logger or specific loggers
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -13,7 +15,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 def main():
-    AppConfigs().load_app_configs()
+    LOGGER.info("Loading AppConfigs started...")
+    configs = AppConfigs.get_instance()
+    configs.load_app_configs()
+
+    LOGGER.info("Loading TrainingConfigs started...")
+    training_utils = TrainingUtils.get_instance()
+    training_utils.load_model_configs()
 
     LOGGER.info("Training started...")
     # Add training logic here
