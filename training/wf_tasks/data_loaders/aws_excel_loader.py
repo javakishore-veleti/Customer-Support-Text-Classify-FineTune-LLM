@@ -4,20 +4,16 @@ from training.dtos import TrainingReqDTO, TrainingResDTO
 from app_common.app_constants import WfResponses
 
 
-class TrainingConfigsLoaderTask(TrainingPipelineTask):
+class AWSExcelTrainingDataLoaderTask(TrainingPipelineTask):
     def __init__(self):
         super().__init__()
 
     def name(self) -> str:
         """Unique task name identifier."""
-        return "training_configs_loader"
+        return "aws_excel_training_data_loader"
 
     @overrides
     # noinspection PyMethodMayBeStatic
     def execute(self, req_dto:TrainingReqDTO, res_dto:TrainingResDTO) -> int:
-        from training.utils.training_utils import TrainingUtils
-
-        training_utils = TrainingUtils.get_instance()
-        training_utils.load_model_configs()
 
         return WfResponses.SUCCESS

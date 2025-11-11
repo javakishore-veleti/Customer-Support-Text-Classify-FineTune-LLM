@@ -15,9 +15,5 @@ class ModelEvaluationTask(TrainingPipelineTask):
     @overrides
     # noinspection PyMethodMayBeStatic
     def execute(self, req_dto:TrainingReqDTO, res_dto:TrainingResDTO) -> int:
-        from training.utils.training_utils import TrainingUtils
-
-        training_utils = TrainingUtils.get_instance()
-        training_utils.load_model_configs()
 
         return WfResponses.SUCCESS

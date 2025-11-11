@@ -8,6 +8,10 @@
           "class_path": "training.wf_tasks.setup.training_configs_loader_task.TrainingConfigsLoaderTask"
         },
         {
+          "task_name": "aws_excel_training_data_loader",
+          "class_path": "training.wf_tasks.data_loaders.aws_excel_loader.AWSExcelTrainingDataLoaderTask"
+        },
+        {
           "task_name": "data_preprocessing",
           "class_path": "training.wf_tasks.cleansing.data_preprocessing_task.DataPreProcessingTask"
         },
