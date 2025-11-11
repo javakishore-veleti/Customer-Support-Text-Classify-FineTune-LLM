@@ -4,14 +4,17 @@
       "name": "CustomerSupportFineTuningTrainingPipeline",
       "tasks": [
         {
+          "purpose": "Reads env file configurations, training parameters, and other necessary settings for the training pipeline.",
           "task_name": "training_configs_loader",
           "class_path": "training.wf_tasks.setup.training_configs_loader_task.TrainingConfigsLoaderTask"
         },
         {
+          "purpose": "loads Excel → sheets → DataFrames",
           "task_name": "training_data_excels_data_loader",
           "class_path": "training.wf_tasks.data_loaders.aws_excel_loader.TrainingDataExcelsDataLoaderTask"
         },
         {
+          "purpose": "label2id, id2label per sheet",
           "task_name": "training_data_labels_mapper",
           "class_path": "training.wf_tasks.cleansing.training_data_labels_mapper.TrainingDataLabelsMapperTask"
         },

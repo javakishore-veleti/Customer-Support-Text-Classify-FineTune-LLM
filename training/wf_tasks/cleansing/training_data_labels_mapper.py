@@ -27,16 +27,16 @@ class TrainingDataLabelsMapperTask(TrainingPipelineTask):
             "TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV", "category")
         label2ids_col_names = [col_name.strip() for col_name in label2ids_col_names_csv.split(",")]
 
-
         # Example excel_sheets_columns_mappings_dict = {"excel_file_name": {"sheet_name": {"a_label2id_col_name": {}}}}
         excel_sheets_columns_mappings_dict = {}
+        req_dto.training_data_labels_mapping = excel_sheets_columns_mappings_dict
 
         for an_excel_worksheets_info in excels_worksheets_as_dfs_list:
             excel_file_name = an_excel_worksheets_info.get("file_name")
             sheets_dict: dict = an_excel_worksheets_info.get("sheets")
 
             # Example {"a_label2id_col_name": {}}}
-            temp = {"sheet_name": {}}
+            temp = {}
             excel_sheets_columns_mappings_dict.update({excel_file_name: temp})
 
             for sheet_name, sheet_as_df in sheets_dict.items():
