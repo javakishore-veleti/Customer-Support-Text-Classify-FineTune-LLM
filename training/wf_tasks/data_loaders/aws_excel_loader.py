@@ -10,13 +10,13 @@ import pandas as pd
 LOGGER = logging.getLogger(__name__)
 
 
-class AWSExcelTrainingDataLoaderTask(TrainingPipelineTask):
+class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
     def __init__(self):
         super().__init__()
 
     def name(self) -> str:
         """Unique task name identifier."""
-        return "aws_excel_training_data_loader"
+        return "training_data_excels_data_loader"
 
     @overrides
     # noinspection PyMethodMayBeStatic
@@ -27,6 +27,8 @@ class AWSExcelTrainingDataLoaderTask(TrainingPipelineTask):
         LOGGER.info(f"Excel File Names set to: {req_dto.training_data_excel_file_names}")
 
         dataframes = self.load_all_excel_sheets(req_dto.training_data_excel_filePath, req_dto.training_data_excel_file_names)
+        req_dto.training_data_dataframes = dataframes
+
         LOGGER.info(f"COMPLETED Loading Excel Files as DataFrames. Total files loaded: {len(dataframes)}")
         LOGGER.info(f"Excel File Names set to: {req_dto.training_data_excel_file_names}")
 
