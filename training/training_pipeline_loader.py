@@ -1,6 +1,7 @@
 import json
 import logging
 from training.core.task_registry import TaskRegistry
+from app_common.app_constants import TrainingConstants
 
 LOGGER = logging.getLogger(__name__)
 
@@ -10,7 +11,7 @@ class TrainingPipelineLoader:
         self.json_path = json_path
         self.registry = TaskRegistry()
 
-    def load_pipeline(self, workflow_name: str = "CustomerSupportFineTuningTrainingPipeline"):
+    def load_pipeline(self, workflow_name: str = TrainingConstants.DEFAULT_TRAINING_PIPELINE_NAME):
         with open(self.json_path, "r") as f:
             config = json.load(f)
 
