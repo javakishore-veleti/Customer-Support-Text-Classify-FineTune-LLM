@@ -43,10 +43,12 @@ class TrainingModelFineTuneTask(TrainingPipelineTask):
     def _load_env_configs(self):
         """Load model, directory, and training hyperparameter configs."""
         cfg = {}
+
+        cfg["model_output_base_path_folder_name"] = AppConfigs.get_instance().get_str("MODEL_OUTPUT_BASE_FOLDER_NAME_CLASSIFICATION", "aws_service_training_dataset_clustering")
         cfg["model_name"] = AppConfigs.get_instance().get_str("MODEL_NAME", "distilbert-base-uncased")
         cfg["model_version"] = AppConfigs.get_instance().get_str("MODEL_VERSION", "1.0.0")
         cfg["model_dir_name"] = AppConfigs.get_instance().get_str("MODEL_NAME_DIR", "customer-support-distilbert")
-        cfg["output_root"] = AppConfigs.get_instance().get_str("MODELS_OUTPUT_DIR", "../outputs/model_outputs")
+        cfg["output_root"] = AppConfigs.get_instance().get_str("MODELS_OUTPUT_DIR_CLASSIFICATION", "../outputs/model_outputs/classification")
 
         label_cols_csv = AppConfigs.get_instance().get_str("TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV", "category")
         cfg["label_cols"] = [c.strip() for c in label_cols_csv.split(",") if c.strip()]
@@ -191,7 +193,7 @@ class TrainingModelFineTuneTask(TrainingPipelineTask):
                     cfg["output_root"],
                     cfg["model_dir_name"],
                     cfg["model_version"],
-                    excel_file_name.replace(".xlsx", ""),
+                    cfg["model_output_base_path_folder_name"],
                     sheet_name,
                 )
                 os.makedirs(model_output_dir, exist_ok=True)

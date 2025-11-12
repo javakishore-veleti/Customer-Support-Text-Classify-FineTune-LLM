@@ -80,7 +80,7 @@ class TrainingUtils:
         - If relative, resolve relative to current working directory.
         - Default: ./outputs/model_outputs
         """
-        dir_value = app_configs.get_str("MODELS_OUTPUT_DIR")
+        dir_value = app_configs.get_str("MODELS_OUTPUT_DIR_CLASSIFICATION")
 
         if dir_value:
             dir_path = Path(dir_value)
