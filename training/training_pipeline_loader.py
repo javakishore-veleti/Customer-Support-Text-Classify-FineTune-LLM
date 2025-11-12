@@ -39,7 +39,7 @@ class TrainingPipelineLoader:
                 module_name, class_name = class_path.rsplit(".", 1)
                 module = importlib.import_module(module_name)
                 clazz = getattr(module, class_name)
-                registry.register(task_name, clazz)  # ✅ call via instance
+                registry.register(task_name, clazz)  # call via instance
                 LOGGER.debug(f"Task '{task_name}' registered successfully.")
 
             task_class = registry.get_task_class(task_name)

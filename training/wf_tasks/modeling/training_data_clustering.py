@@ -20,9 +20,8 @@ LOGGER = logging.getLogger(__name__)
 
 class TrainingDataClusteringTask(TrainingPipelineTask):
     """
-    Perform unsupervised clustering on embedded text data.
-    Supports KMeans, DBSCAN, HDBSCAN (optional), and Agglomerative clustering.
-    Configurable from .env.
+    Perform unsupervised clustering on embedded text data (per worksheet).
+    Saves results under the same model/version hierarchy as training outputs.
     """
 
     def __init__(self):
@@ -37,7 +36,6 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
 
     def _get_env_config(self):
         cfg = AppConfigs.get_instance()
-
         return {
             "enabled": cfg.get_str("TRAINING_ENABLE_CLUSTERING", "false").lower() == "true",
             "text_columns": [
@@ -45,12 +43,14 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
             ],
             "algorithm": cfg.get_str("TRAINING_CLUSTERING_ALGORITHM", "kmeans").lower(),
             "num_clusters": int(cfg.get_str("TRAINING_CLUSTERING_NUM_CLUSTERS", "5")),
-            "dim_reduction": cfg.get_str("TRAINING_CLUSTERING_DIM_REDUCTION", "none").lower(),
+            "dim_reduction": cfg.get_str("TRAINING_CLUSTERING_DIM_REDUCTION", "umap").lower(),
             "distance_metric": cfg.get_str("TRAINING_CLUSTERING_DISTANCE_METRIC", "cosine").lower(),
             "min_cluster_size": int(cfg.get_str("TRAINING_CLUSTERING_MIN_CLUSTER_SIZE", "5")),
             "random_state": int(cfg.get_str("TRAINING_CLUSTERING_RANDOM_STATE", "42")),
-            "output_dir": cfg.get_str("TRAINING_CLUSTERING_OUTPUT_DIR", "../outputs/clustering_results"),
             "model_name": cfg.get_str("MODEL_NAME", "distilbert-base-uncased"),
+            "model_dir": cfg.get_str("MODEL_NAME_DIR", "customer-support-distilbert"),
+            "model_version": cfg.get_str("MODEL_VERSION", "1.0.0"),
+            "base_output_dir": cfg.get_str("MODELS_OUTPUT_DIR", "../outputs/model_outputs"),
         }
 
     def _reduce_dimensions(self, embeddings, method="none"):
@@ -105,24 +105,23 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
 
     @overrides
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
-        LOGGER.info("🧩 STARTED TrainingDataClusteringTask execution.")
+        LOGGER.info("STARTED TrainingDataClusteringTask execution.")
 
         config = self._get_env_config()
         if not config["enabled"]:
             LOGGER.info("Clustering disabled by config. Skipping task.")
             return WfResponses.SUCCESS
 
-        os.makedirs(config["output_dir"], exist_ok=True)
-
-        # Load model
+        # Load embedding model
         LOGGER.info(f"Loading embedding model: {config['model_name']}")
         model = SentenceTransformer(config["model_name"])
 
         all_results = []
+
         for workbook in req_dto.training_data_dataframes:
-            excel_name = workbook.get("file_name", "unknown.xlsx")
+            excel_name = workbook.get("file_name", "unknown.xlsx").replace(".xlsx", "")
             sheets_dict = workbook.get("sheets", {})
-            LOGGER.info(f"Processing workbook: {excel_name}")
+            LOGGER.info(f"🔍 Processing workbook: {excel_name}")
 
             for sheet_name, sheet_data in sheets_dict.items():
                 df = sheet_data.get("full_df")
@@ -149,34 +148,53 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
                 labels, model_obj = self._cluster_embeddings(embeddings, config)
                 df["cluster_label"] = labels
 
+                # ------------------------------------------------------
+                # Versioned output path: e.g.
+                # ../outputs/model_outputs/customer-support-distilbert/1.0.0/aws_service_training_dataset/Amazon_S3/clustering/
+                # ------------------------------------------------------
+                output_root = os.path.join(
+                    config["base_output_dir"],
+                    config["model_dir"],
+                    config["model_version"],
+                    excel_name,
+                    sheet_name,
+                    "clustering"
+                )
+                os.makedirs(output_root, exist_ok=True)
+
                 # Save visualization if reduced
                 if reduced.shape[1] == 2:
-                    viz_path = os.path.join(
-                        config["output_dir"], f"{excel_name}_{sheet_name}_clusters.png"
-                    )
+                    viz_path = os.path.join(output_root, "clusters.png")
                     self._visualize_clusters(reduced, labels, viz_path)
                     LOGGER.info(f"[{sheet_name}] Cluster visualization saved → {viz_path}")
 
-                # Save results per sheet
-                csv_path = os.path.join(
-                    config["output_dir"], f"{excel_name}_{sheet_name}_clusters.csv"
-                )
+                # Save results CSV
+                csv_path = os.path.join(output_root, "clusters.csv")
                 df.to_csv(csv_path, index=False)
 
+                # Save summary JSON
                 sheet_summary = {
                     "workbook": excel_name,
                     "sheet": sheet_name,
                     "num_records": len(df),
                     "num_clusters": len(set(labels)) - (1 if -1 in labels else 0),
+                    "algorithm": config["algorithm"],
+                    "dim_reduction": config["dim_reduction"]
                 }
+                summary_path = os.path.join(output_root, "clustering_summary.json")
+                with open(summary_path, "w") as f:
+                    json.dump(sheet_summary, f, indent=2)
+
                 all_results.append(sheet_summary)
                 LOGGER.info(f"[{sheet_name}] Completed clustering ({sheet_summary['num_clusters']} clusters)")
 
-        # Save summary JSON
-        summary_path = os.path.join(config["output_dir"], "clustering_summary.json")
-        with open(summary_path, "w") as f:
+        # Global summary under clustering_results root (optional)
+        clustering_root_summary = os.path.join(config["base_output_dir"], "clustering_results")
+        os.makedirs(clustering_root_summary, exist_ok=True)
+        global_summary_path = os.path.join(clustering_root_summary, "clustering_summary.json")
+        with open(global_summary_path, "w") as f:
             json.dump(all_results, f, indent=2)
 
-        LOGGER.info(f"Clustering summary saved → {summary_path}")
+        LOGGER.info(f"Global clustering summary saved → {global_summary_path}")
         LOGGER.info("COMPLETED TrainingDataClusteringTask execution.")
         return WfResponses.SUCCESS
