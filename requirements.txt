@@ -3,11 +3,13 @@ torch
 datasets
 transformers
 tokenizers
+sentence-transformers
 
 # Training and Evaulation
 scikit-learn
 accelerate
 evaluate
+umap-learn
 
 # Data Processing
 pandas

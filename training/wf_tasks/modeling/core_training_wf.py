@@ -54,7 +54,7 @@ class CoreTrainingWF(TrainingPipelineTask):
             LOGGER.warning("No child tasks found for CoreTrainingWF.")
             return WfResponses.SKIPPED
 
-        LOGGER.info(f"🧩 Found {len(my_children)} sub-tasks under CoreTrainingWF.")
+        LOGGER.info(f"Found {len(my_children)} sub-tasks under CoreTrainingWF.")
 
         # Run children sequentially (or parallel in future)
         for task in my_children:

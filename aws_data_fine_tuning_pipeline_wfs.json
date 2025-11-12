@@ -32,6 +32,12 @@
           "belongs_to_list": ["core_training_wf"]
         },
         {
+          "task_name": "training_data_clustering",
+          "class_path": "training.wf_tasks.modeling.training_data_clustering.TrainingDataClusteringTask",
+          "is_belongs_to_task": true,
+          "belongs_to_list": ["core_training_wf"]
+        },
+        {
           "task_name": "training_model_fine_tune",
           "class_path": "training.wf_tasks.modeling.training_data_fine_tuning.TrainingModelFineTuneTask",
           "is_belongs_to_task": true,
