@@ -1,0 +1,82 @@
+name: 🧠 LLM Model Training Pipeline
+
+on:
+  # Run manually or automatically on pushes to main or model-training branches
+  workflow_dispatch:
+
+jobs:
+  run-training:
+    name: Run Model Training & Clustering
+    runs-on: ubuntu-latest
+
+    env:
+      PYTHONPATH: "${{ github.workspace }}"
+      # ensures .env configs are visible to Python
+      ENV_FILE: ".env"
+
+    steps:
+      # ------------------------------
+      #   Checkout code
+      # ------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------
+      # 2️⃣  Setup Python environment
+      # ------------------------------
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ------------------------------
+      # 3️⃣  Install dependencies
+      # ------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # ensure correct numba/llvmlite combo for Python 3.12 + UMAP
+          pip install "numba==0.59.1" "llvmlite==0.42.0"
+
+      # ------------------------------
+      # Verify dataset + workflow JSON exist
+      # ------------------------------
+      - name: Verify data & config files
+        run: |
+          ls -R z_datasets || echo "z_datasets missing"
+          ls aws_data_fine_tuning_pipeline_wfs.json || echo "⚠️ workflow JSON missing"
+
+      # ------------------------------
+      # 5️⃣  Run model training
+      # ------------------------------
+      - name: Execute training pipeline
+        run: |
+          echo "Starting model training..."
+          python -m training.main
+        env:
+          # load your .env file into the environment
+          $(grep -v '^#' .env | xargs)
+
+      # ------------------------------
+      # Upload model outputs (artifacts)
+      # ------------------------------
+      - name: Upload model outputs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-training-outputs
+          path: outputs/model_outputs/
+          retention-days: 7
+
+      # ------------------------------
+      # 7️Optional: Upload logs
+      # ------------------------------
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-logs
+          path: |
+            **/*.log
+            training/logs/
