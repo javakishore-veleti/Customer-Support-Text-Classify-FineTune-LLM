@@ -1,0 +1,8 @@
+{
+  "name": "customer-support-llm",
+  "version": "1.0.0",
+  "scripts": {
+    "model-training:start": "python -m training.main",
+    "ui:start": "streamlit run ui_app/app_streamlit.py --server.port 8501"
+  }
+}

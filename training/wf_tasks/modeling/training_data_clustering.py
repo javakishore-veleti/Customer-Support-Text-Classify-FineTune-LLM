@@ -5,16 +5,26 @@ import pandas as pd
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.decomposition import PCA
 from sentence_transformers import SentenceTransformer
-import umap
 import matplotlib.pyplot as plt
 from overrides import overrides
-
+from pathlib import Path
 from ..interfaces import TrainingPipelineTask
 from training.dtos import TrainingReqDTO, TrainingResDTO
 from app_common.app_configs_util import AppConfigs
 from app_common.app_constants import WfResponses
+from app_common.app_file_util import AppFileUtil
 
 LOGGER = logging.getLogger(__name__)
+
+
+def resolve_path(path_str: str, __file__val) -> str:
+    """Resolve relative paths safely from repo root."""
+    p = Path(path_str)
+    if p.is_absolute():
+        return str(p)
+    # repo root = 3 levels up (training/tasks/ -> training/ -> project root)
+    root = Path(__file__val).resolve().parent.parent.parent
+    return str((root / p).resolve())
 
 
 class TrainingDataClusteringTask(TrainingPipelineTask):
@@ -37,12 +47,16 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
     # ============================================================
     def _get_env_config(self):
         cfg = AppConfigs.get_instance()
+        excel_dir = AppFileUtil.resolve_path(cfg.get_str("TRAINING_DATASET_EXCEL_FILE_PATH"), __file__)
+        base_output_dir = AppFileUtil.resolve_path(cfg.get_str("MODELS_OUTPUT_DIR", "outputs/model_outputs"), __file__)
+
         return {
             "enabled": cfg.get_str("TRAINING_ENABLE_CLUSTERING", "true").lower() == "true",
-            "excel_dir": cfg.get_str("TRAINING_DATASET_EXCEL_FILE_PATH"),
+            "excel_dir": excel_dir,
             "excel_names_csv": cfg.get_str("TRAINING_DATASET_EXCEL_FILE_NAMES_CSV", "ALL_FILES"),
             "text_columns": [
-                c.strip() for c in cfg.get_str("TRAINING_DATASET_CLUSTERING_TEXT_COLUMNS_CSV", "").split(",") if c.strip()
+                c.strip() for c in cfg.get_str("TRAINING_DATASET_CLUSTERING_TEXT_COLUMNS_CSV", "").split(",") if
+                c.strip()
             ],
             "worksheets_to_skip": [
                 s.strip() for s in cfg.get_str("DATASET_WORKSHEETS_TO_SKIP_CSV", "").split(",") if s.strip()
@@ -52,11 +66,13 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
             "dim_reduction": cfg.get_str("TRAINING_CLUSTERING_DIM_REDUCTION", "umap").lower(),
             "distance_metric": cfg.get_str("TRAINING_CLUSTERING_DISTANCE_METRIC", "cosine").lower(),
             "random_state": int(cfg.get_str("TRAINING_CLUSTERING_RANDOM_STATE", "42")),
-            "base_output_dir": cfg.get_str("MODELS_OUTPUT_DIR", "../outputs/model_outputs"),
+            "base_output_dir": base_output_dir,
             "model_dir": cfg.get_str("MODEL_NAME_DIR", "customer-support-distilbert"),
             "model_version": cfg.get_str("MODEL_VERSION", "1.0.0"),
             "model_name": cfg.get_str("MODEL_NAME", "distilbert-base-uncased"),
-            "model_output_base_folder_name": cfg.get_str("MODEL_OUTPUT_BASE_FOLDER_NAME_CLUSTERING", "aws_service_training_dataset_clustering"),
+            "model_output_base_folder_name": cfg.get_str(
+                "MODEL_OUTPUT_BASE_FOLDER_NAME_CLUSTERING", "aws_service_training_dataset_clustering"
+            ),
         }
 
     def _get_excel_files(self, config):
@@ -76,6 +92,11 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
         if method == "pca":
             return PCA(n_components=2).fit_transform(embeddings)
         elif method == "umap":
+            import umap
+            # Disable Numba for Python 3.12 stability
+            umap.umap_.NUMBA_AVAILABLE = False
+            LOGGER.warning(" Numba JIT disabled for UMAP (safe mode on).")
+
             reducer = umap.UMAP(n_neighbors=10, min_dist=0.3, random_state=42)
             return reducer.fit_transform(embeddings)
         return embeddings
@@ -184,8 +205,11 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
         config = self._get_env_config()
 
         if not config["enabled"]:
-            LOGGER.info("Clustering disabled in .env — skipping.")
+            req_dto.training_clustering_enabled = False
+            LOGGER.info("Clustering DISABLED in .env — skipping.")
             return WfResponses.SUCCESS
+
+        LOGGER.info("Clustering ENABLED in .env — skipping.")
 
         excel_files = self._get_excel_files(config)
         if not excel_files:
@@ -207,7 +231,8 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
                     all_results.append(sheet_summary)
 
         # Save master summary
-        global_summary_dir = os.path.join(config["base_output_dir"], "clustering", config["model_dir"], config["model_version"], "clustering_results")
+        global_summary_dir = os.path.join(config["base_output_dir"], "clustering", config["model_dir"],
+                                          config["model_version"], "clustering_results")
         os.makedirs(global_summary_dir, exist_ok=True)
         with open(os.path.join(global_summary_dir, "clustering_summary.json"), "w") as f:
             json.dump(all_results, f, indent=2)

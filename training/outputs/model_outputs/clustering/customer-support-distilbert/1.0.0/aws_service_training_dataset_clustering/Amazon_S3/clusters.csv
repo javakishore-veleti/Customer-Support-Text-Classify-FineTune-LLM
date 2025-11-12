@@ -1,0 +1,31 @@
+category,category_serial_number,sample_question,sample_question_type,__cluster_text__,cluster_label
+Billing,1,What pricing model does Amazon S3 use?,Generic Training Prompt,What pricing model does Amazon S3 use? | Generic Training Prompt,4
+Billing,2,How can Amazon S3 costs be optimized for large-scale data workloads?,Realistic Enterprise-Level Question,How can Amazon S3 costs be optimized for large-scale data workloads? | Realistic Enterprise-Level Question,2
+Billing,3,What enterprise pricing plans are available for Amazon S3?,Realistic Enterprise-Level Question,What enterprise pricing plans are available for Amazon S3? | Realistic Enterprise-Level Question,2
+Billing,5,How is Amazon S3 billed per usage?,Generic Training Prompt,How is Amazon S3 billed per usage? | Generic Training Prompt,4
+Billing,11,How does reserved capacity impact Amazon S3 billing?,Realistic Enterprise-Level Question,How does reserved capacity impact Amazon S3 billing? | Realistic Enterprise-Level Question,2
+Billing,18,Are there free-tier limits for Amazon S3?,Generic Training Prompt,Are there free-tier limits for Amazon S3? | Generic Training Prompt,4
+Technical Support,1001,What are common troubleshooting steps for Amazon S3?,Generic Training Prompt,What are common troubleshooting steps for Amazon S3? | Generic Training Prompt,0
+Technical Support,1003,What monitoring tools integrate with Amazon S3 for diagnostics?,Realistic Enterprise-Level Question,What monitoring tools integrate with Amazon S3 for diagnostics? | Realistic Enterprise-Level Question,2
+Technical Support,1004,How to handle data consistency issues when using Amazon S3?,Realistic Enterprise-Level Question,How to handle data consistency issues when using Amazon S3? | Realistic Enterprise-Level Question,2
+Technical Support,1006,How to troubleshoot performance degradation in Amazon S3?,Realistic Enterprise-Level Question,How to troubleshoot performance degradation in Amazon S3? | Realistic Enterprise-Level Question,2
+Technical Support,1008,How to contact AWS support for Amazon S3?,Generic Training Prompt,How to contact AWS support for Amazon S3? | Generic Training Prompt,0
+Technical Support,1013,How to resolve access denied error in Amazon S3?,Generic Training Prompt,How to resolve access denied error in Amazon S3? | Generic Training Prompt,0
+Product Inquiry,2001,Can Amazon S3 be integrated with on-premise systems?,Realistic Enterprise-Level Question,Can Amazon S3 be integrated with on-premise systems? | Realistic Enterprise-Level Question,3
+Product Inquiry,2002,What are the compliance certifications available for Amazon S3?,Realistic Enterprise-Level Question,What are the compliance certifications available for Amazon S3? | Realistic Enterprise-Level Question,2
+Product Inquiry,2004,What is Amazon S3?,Generic Training Prompt,What is Amazon S3? | Generic Training Prompt,4
+Product Inquiry,2005,How does Amazon S3 handle data encryption and access control?,Realistic Enterprise-Level Question,How does Amazon S3 handle data encryption and access control? | Realistic Enterprise-Level Question,2
+Product Inquiry,2006,How does Amazon S3 compare to similar AWS offerings?,Generic Training Prompt,How does Amazon S3 compare to similar AWS offerings? | Generic Training Prompt,4
+Product Inquiry,2009,What are the main use cases of Amazon S3?,Generic Training Prompt,What are the main use cases of Amazon S3? | Generic Training Prompt,4
+Complaint,3001,Amazon S3 is not working as expected—how to fix it?,Generic Training Prompt,Amazon S3 is not working as expected—how to fix it? | Generic Training Prompt,0
+Complaint,3002,"Enterprise account had outage issues with Amazon S3, what’s root cause?",Realistic Enterprise-Level Question,"Enterprise account had outage issues with Amazon S3, what’s root cause? | Realistic Enterprise-Level Question",1
+Complaint,3003,Why is Amazon S3 response latency high during peak hours?,Realistic Enterprise-Level Question,Why is Amazon S3 response latency high during peak hours? | Realistic Enterprise-Level Question,2
+Complaint,3004,Upload speed to Amazon S3 is too slow—what can I do?,Generic Training Prompt,Upload speed to Amazon S3 is too slow—what can I do? | Generic Training Prompt,0
+Complaint,3005,Users report errors in Amazon S3 dashboard—how can it be fixed?,Realistic Enterprise-Level Question,Users report errors in Amazon S3 dashboard—how can it be fixed? | Realistic Enterprise-Level Question,2
+Complaint,3010,Why am I getting 403 errors in Amazon S3?,Generic Training Prompt,Why am I getting 403 errors in Amazon S3? | Generic Training Prompt,0
+Compliment,4001,Great experience using Amazon S3.,Generic Training Prompt,Great experience using Amazon S3. | Generic Training Prompt,0
+Compliment,4002,Our enterprise saw huge performance gains after adopting Amazon S3.,Realistic Enterprise-Level Question,Our enterprise saw huge performance gains after adopting Amazon S3. | Realistic Enterprise-Level Question,3
+Compliment,4005,Amazon S3 provided outstanding reliability during our recent migration.,Realistic Enterprise-Level Question,Amazon S3 provided outstanding reliability during our recent migration. | Realistic Enterprise-Level Question,3
+Compliment,4007,The integration between Amazon S3 and CloudWatch works seamlessly.,Realistic Enterprise-Level Question,The integration between Amazon S3 and CloudWatch works seamlessly. | Realistic Enterprise-Level Question,3
+Compliment,4009,The new update in Amazon S3 is fantastic.,Generic Training Prompt,The new update in Amazon S3 is fantastic. | Generic Training Prompt,0
+Compliment,4011,Amazon S3 has improved our workflow efficiency.,Generic Training Prompt,Amazon S3 has improved our workflow efficiency. | Generic Training Prompt,0

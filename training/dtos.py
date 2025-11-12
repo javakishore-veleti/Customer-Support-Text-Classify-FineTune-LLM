@@ -22,6 +22,8 @@ class TrainingReqDTO:
         self.training_data_excel_filePath = ""
         self.training_data_excel_file_names = []
         self.training_data_dataframes = []  # List of dicts: {file_name: {sheet_name: DataFrame}}
+        self.training_clustering_enabled = True
+        self.training_classification_enabled = True
 
         """
         Key -> Excel File Name

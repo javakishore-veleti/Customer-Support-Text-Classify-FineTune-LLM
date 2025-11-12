@@ -26,9 +26,15 @@ seaborn
 fastapi
 uvicorn
 pydantic
+streamlit
+plotly
 
 #Utilties
 tqdm
 requests
 overrides
 python-dotenv
+
+numba==0.59.1
+llvmlite==0.42.0
+umap-learn

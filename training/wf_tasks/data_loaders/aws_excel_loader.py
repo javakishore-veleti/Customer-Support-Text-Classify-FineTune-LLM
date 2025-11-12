@@ -6,6 +6,7 @@ from app_common.app_configs_util import AppConfigs
 from pathlib import Path
 import logging
 import pandas as pd
+from app_common.app_file_util import AppFileUtil
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ def normalize_sheet_name(name: str) -> str:
     # Normalize AWS_ and Amazon_ prefixes to a common base
     name = name.replace("aws_", "").replace("amazon_", "")
     return name
+
 
 class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
     """
@@ -33,6 +35,11 @@ class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
     @overrides
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
         LOGGER.info("STARTED TrainingDataExcelsDataLoaderTask")
+
+        if not AppConfigs.get_instance().get_bool("TRAINING_ENABLE_CLASSIFICATION", False):
+            LOGGER.info("Classification DISABLED in .env — skipping.")
+            req_dto.training_clustering_enabled = False
+            return WfResponses.SUCCESS
 
         # Step 1: Resolve Excel file paths and names
         self.read_all_file_names_using_configs(req_dto)
@@ -58,15 +65,18 @@ class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
             "TRAINING_DATASET_EXCEL_FILE_PATH",
             "z_datasets/training_datasets/aws_services_questions"
         )
+        excel_dir = AppFileUtil.resolve_path(excel_file_dir_path, __file__)
+
         excel_files_csv = AppConfigs.get_instance().get_str(
             "TRAINING_DATASET_EXCEL_FILE_NAMES_CSV",
             "ALL_FILES"
         ).strip()
 
         if excel_files_csv != "ALL_FILES":
+            LOGGER.info(f"!= ALL_FILES So excel_files_csv  {excel_files_csv}")
             excel_file_names = [f.strip() for f in excel_files_csv.split(",") if f.strip()]
         else:
-            LOGGER.info(f"📂 Loading all Excel files from: {excel_file_dir_path}")
+            LOGGER.info(f"Loading all Excel files from: {excel_file_dir_path}")
             folder = Path(excel_file_dir_path)
             excel_file_names = [file.name for file in folder.glob("*.xlsx") if file.is_file()]
 
@@ -80,6 +90,7 @@ class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
     # ---------------------------------------------------------------------
     def load_all_excel_sheets(self, folder_path: str, file_names: list):
         folder = Path(folder_path)
+
         dataframes = []
 
         skip_csv = AppConfigs.get_instance().get_str("DATASET_WORKSHEETS_TO_SKIP_CSV", "")
@@ -92,9 +103,12 @@ class TrainingDataExcelsDataLoaderTask(TrainingPipelineTask):
         LOGGER.info(f"skip_csv {skip_csv} Sheets to skip (normalized): {skip_sheets or ['(none)']}")
 
         for file_name in file_names:
+            LOGGER.info(f"Loading Excel file: {file_name} folder {folder}")
             file_path = folder / file_name
+            resolve_path = AppFileUtil.resolve_path(str(file_path), __file__)
+            LOGGER.info(f"Loading resolve_path Excel file: {resolve_path}")
             try:
-                sheets_dict = pd.read_excel(file_path, sheet_name=None)
+                sheets_dict = pd.read_excel(resolve_path, sheet_name=None)
                 filtered_sheets, skipped = {}, []
 
                 for sheet_name, df in sheets_dict.items():

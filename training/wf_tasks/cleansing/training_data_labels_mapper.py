@@ -21,6 +21,11 @@ class TrainingDataLabelsMapperTask(TrainingPipelineTask):
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
         LOGGER.info("STARTED TrainingDataLabelsMapperTask execution.")
 
+        if not AppConfigs.get_instance().get_bool("TRAINING_ENABLE_CLASSIFICATION", False):
+            LOGGER.info("Classification DISABLED in .env — skipping.")
+            req_dto.training_clustering_enabled = False
+            return WfResponses.SUCCESS
+
         excels_worksheets_as_dfs_list = req_dto.training_data_dataframes
 
         label2ids_col_names_csv = AppConfigs.get_instance().get_str(

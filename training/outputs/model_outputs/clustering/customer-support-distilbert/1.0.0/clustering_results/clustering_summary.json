@@ -1,0 +1,13 @@
+[
+  {
+    "workbook": "aws_service_training_dataset",
+    "sheet": "Amazon_S3",
+    "records": 30,
+    "clusters": 5,
+    "algorithm": "kmeans",
+    "columns_used": [
+      "sample_question",
+      "sample_question_type"
+    ]
+  }
+]

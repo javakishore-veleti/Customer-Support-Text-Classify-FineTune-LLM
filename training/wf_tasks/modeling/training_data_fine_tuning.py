@@ -135,6 +135,11 @@ class TrainingModelFineTuneTask(TrainingPipelineTask):
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
         LOGGER.info("STARTED TrainingModelFineTuneTask execution.")
 
+        if not AppConfigs.get_instance().get_bool("TRAINING_ENABLE_CLASSIFICATION", False):
+            LOGGER.info("Classification DISABLED in .env — skipping.")
+            req_dto.training_clustering_enabled = False
+            return WfResponses.SUCCESS
+
         if not req_dto.training_data_dataframes:
             LOGGER.error("No training_data_dataframes found in req_dto.")
             return WfResponses.FAILURE

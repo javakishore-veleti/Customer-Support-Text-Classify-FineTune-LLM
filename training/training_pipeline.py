@@ -32,10 +32,6 @@ class TrainingPipelineImpl(TrainingPipelineWf):
         )
         tasks = loader.load_pipeline(training_pipeline_name)
 
-        # --- Initialize DTOs ---
-        req_dto = TrainingReqDTO()
-        res_dto = TrainingResDTO()
-
         executed = set()
 
         # --- Run top-level tasks only ---

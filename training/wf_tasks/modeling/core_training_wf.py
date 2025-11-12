@@ -29,7 +29,15 @@ class CoreTrainingWF(TrainingPipelineTask):
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
         LOGGER.info("STARTED CoreTrainingWF execution")
 
-        configs = AppConfigs.get_instance()
+        if not AppConfigs.get_instance().get_bool("TRAINING_ENABLE_CLASSIFICATION", False):
+            LOGGER.info("Classification DISABLED in .env — skipping.")
+            req_dto.training_clustering_enabled = False
+            return WfResponses.SUCCESS
+
+        LOGGER.info("Classification ENABLED in .env — skipping.")
+
+        raise NotImplementedError("CoreTrainingWF currently only supports classification disabled scenario.")
+
         wfs_json_path = configs.get_str(
             TrainingConstants.KEY_TRAINING_PIPELINE_WORKFLOWS_JSON_PATH,
             "../aws_data_fine_tuning_pipeline_wfs.json"
