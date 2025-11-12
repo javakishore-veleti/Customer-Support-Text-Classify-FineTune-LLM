@@ -12,13 +12,16 @@ LOGGER = logging.getLogger(__name__)
 
 class TrainingTokenizerTask(TrainingPipelineTask):
     """
-    Tokenizes all configured text columns (from .env) for every worksheet.
+    Builds a context-rich combined text field using only training-relevant columns
+    (defined in DATASET_COLUMN_NAMES_FOR_TRAINING), then tokenizes each worksheet.
 
-    Configuration (.env):
-        TRAINING_MODEL_NAME=distilbert-base-uncased
-        TRAINING_MODEL_MAX_SEQ_LEN=128
-        DATASET_EXCEL_COLUMN_NAMES="category,category_serial_number,sample_question,sample_question_type"
-        TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV="category"
+    Output per worksheet:
+        sheet_data["tokenized_datasets"] = {
+            "tokenized_train_dataset": Dataset,
+            "tokenized_test_dataset": Dataset,
+            "train_sample_count": int,
+            "test_sample_count": int
+        }
     """
 
     def __init__(self):
@@ -35,44 +38,55 @@ class TrainingTokenizerTask(TrainingPipelineTask):
             LOGGER.error("No training_data_dataframes found in req_dto.")
             return WfResponses.FAILURE
 
-        model_name = AppConfigs.get_instance().get_str(
-            "TRAINING_MODEL_NAME", "distilbert-base-uncased"
-        )
-        max_seq_len = AppConfigs.get_instance().get_int(
-            "TRAINING_MODEL_MAX_SEQ_LEN", 128
-        )
-        dataset_cols_csv = AppConfigs.get_instance().get_str(
+        # --- Load model & tokenizer config ---
+        model_name = AppConfigs.get_instance().get_str("TRAINING_MODEL_NAME", "distilbert-base-uncased")
+        max_seq_len = AppConfigs.get_instance().get_int("TRAINING_MODEL_MAX_SEQ_LEN", 128)
+
+        # --- Column configuration ---
+        excel_cols_csv = AppConfigs.get_instance().get_str(
             "DATASET_EXCEL_COLUMN_NAMES",
-            "category,category_serial_number,sample_question,sample_question_type",
+            "category,category_serial_number,sample_question,sample_question_type"
         )
-        dataset_cols = [c.strip() for c in dataset_cols_csv.split(",") if c.strip()]
+        excel_cols = [c.strip() for c in excel_cols_csv.split(",") if c.strip()]
+
+        train_cols_csv = AppConfigs.get_instance().get_str(
+            "DATASET_COLUMN_NAMES_FOR_TRAINING",
+            "category,sample_question,sample_question_type"
+        )
+        train_cols = [c.strip() for c in train_cols_csv.split(",") if c.strip()]
 
         label_cols_csv = AppConfigs.get_instance().get_str(
-            "TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV", "category"
+            "TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV", "category"
         )
         label_cols = [c.strip() for c in label_cols_csv.split(",") if c.strip()]
-
-        LOGGER.info(f"Tokenizer Model: {model_name}")
-        LOGGER.info(f"Max Sequence Length: {max_seq_len}")
-        LOGGER.info(f"Configured Columns to Tokenize: {dataset_cols}")
-        LOGGER.info(f"Label Columns: {label_cols}")
 
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         req_dto.tokenizer = tokenizer
 
-        def tokenize_fn(examples, text_col_name):
-            texts = examples[text_col_name]
-            if not isinstance(texts, list):
-                texts = [str(texts)]
-            else:
-                texts = ["" if v is None else str(v) for v in texts]
+        LOGGER.info(f"Tokenizer Model: {model_name}")
+        LOGGER.info(f"Max Sequence Length: {max_seq_len}")
+        LOGGER.info(f"Excel Columns: {excel_cols}")
+        LOGGER.info(f"Training Columns: {train_cols}")
+        LOGGER.info(f"Label Columns: {label_cols}")
+
+        # --- Combine context text from selected training columns ---
+        def build_combined_text(row):
+            parts = []
+            for col in train_cols:
+                val = str(row.get(col, "")).strip()
+                tag = f"[{col.upper()}]"
+                parts.append(f"{tag} {val}")
+            return " ".join(parts)
+
+        def tokenize_fn(examples):
             return tokenizer(
-                texts,
+                examples["__combined_text__"],
                 truncation=True,
                 padding="max_length",
                 max_length=max_seq_len,
             )
 
+        # --- Iterate over workbooks ---
         for workbook in req_dto.training_data_dataframes:
             excel_file_name = workbook.get("file_name")
             sheets_dict = workbook.get("sheets", {})
@@ -82,71 +96,48 @@ class TrainingTokenizerTask(TrainingPipelineTask):
                     LOGGER.warning(f"Skipping sheet '{sheet_name}' — no train/test split present.")
                     continue
 
-                train_df = sheet_data["train_df"]
-                test_df = sheet_data["test_df"]
+                train_df = sheet_data["train_df"].copy()
+                test_df = sheet_data["test_df"].copy()
 
-                tokenized_datasets = {}
+                # Build combined text for both splits
+                train_df["__combined_text__"] = train_df.apply(build_combined_text, axis=1)
+                test_df["__combined_text__"] = test_df.apply(build_combined_text, axis=1)
 
-                for col_name in dataset_cols:
-                    if col_name not in train_df.columns:
-                        LOGGER.debug(f"Skipping column '{col_name}' — not found in {excel_file_name}->{sheet_name}")
-                        continue
+                # Keep only combined text + label columns
+                all_cols = ["__combined_text__"] + [c for c in label_cols if c in train_df.columns]
+                try:
+                    train_ds = Dataset.from_pandas(train_df[all_cols])
+                    test_ds = Dataset.from_pandas(test_df[all_cols])
+                except Exception as e:
+                    LOGGER.exception(f"Failed converting sheet '{sheet_name}' to HuggingFace Dataset: {e}")
+                    continue
 
-                    # If column is entirely numeric or NaN, skip it
-                    if train_df[col_name].dropna().apply(lambda x: isinstance(x, (int, float))).all():
-                        LOGGER.warning(f"Skipping column '{col_name}' — purely numeric, not suitable for tokenization.")
-                        continue
+                # Tokenize
+                train_tok = train_ds.map(tokenize_fn, batched=True, remove_columns=["__combined_text__"])
+                test_tok = test_ds.map(tokenize_fn, batched=True, remove_columns=["__combined_text__"])
 
-                    LOGGER.info(f"Tokenizing column '{col_name}' in {excel_file_name}->{sheet_name}")
+                # Format columns
+                keep_cols = ["input_ids", "attention_mask"] + label_cols
+                train_tok.set_format(type="torch", columns=[c for c in keep_cols if c in train_tok.column_names])
+                test_tok.set_format(type="torch", columns=[c for c in keep_cols if c in test_tok.column_names])
 
-                    selected_cols = list({col_name, *[c for c in label_cols if c in train_df.columns]})
-                    LOGGER.debug(f"Selected columns for tokenization → {selected_cols}")
-
-                    # Convert non-string types to strings
-                    for c in selected_cols:
-                        train_df[c] = train_df[c].astype(str)
-                        test_df[c] = test_df[c].astype(str)
-
-                    try:
-                        train_ds = Dataset.from_pandas(train_df[selected_cols])
-                        test_ds = Dataset.from_pandas(test_df[selected_cols])
-                    except Exception as e:
-                        LOGGER.exception(f"Failed converting to Dataset for {col_name} in {sheet_name}: {e}")
-                        continue
-
-                    train_tok = train_ds.map(
-                        lambda x: tokenize_fn(x, col_name),
-                        batched=True,
-                        remove_columns=[col_name],
-                    )
-                    test_tok = test_ds.map(
-                        lambda x: tokenize_fn(x, col_name),
-                        batched=True,
-                        remove_columns=[col_name],
-                    )
-
-                    keep_cols = ["input_ids", "attention_mask"] + label_cols
-                    train_tok.set_format(type="torch", columns=[c for c in keep_cols if c in train_tok.column_names])
-                    test_tok.set_format(type="torch", columns=[c for c in keep_cols if c in test_tok.column_names])
-
-                    tokenized_datasets[col_name] = {
-                        "tokenized_train_dataset": train_tok,
-                        "tokenized_test_dataset": test_tok,
-                        "train_sample_count": len(train_tok),
-                        "test_sample_count": len(test_tok),
-                    }
-
-                    LOGGER.info(
-                        f"Completed tokenizing column '{col_name}' in sheet '{sheet_name}' "
-                        f"(Train={len(train_tok)}, Test={len(test_tok)})"
-                    )
-
+                # ✅ Store clean consistent dict (expected by fine-tuner)
                 sheet_data["tokenizer_model_name"] = model_name
                 sheet_data["max_seq_len"] = max_seq_len
-                sheet_data["tokenized_datasets"] = tokenized_datasets
+                sheet_data["tokenized_datasets"] = {
+                    "tokenized_train_dataset": train_tok,
+                    "tokenized_test_dataset": test_tok,
+                    "train_sample_count": len(train_tok),
+                    "test_sample_count": len(test_tok),
+                }
+                sheet_data["combined_input_example"] = train_df["__combined_text__"].iloc[0][:250]
+
+                LOGGER.info(
+                    f"Tokenized sheet '{sheet_name}' using columns {train_cols} "
+                    f"(Train={len(train_tok)}, Test={len(test_tok)})"
+                )
 
             LOGGER.info(f"Completed tokenization for workbook: {excel_file_name}")
 
         LOGGER.info("COMPLETED TrainingTokenizerTask execution.")
         return WfResponses.SUCCESS
-

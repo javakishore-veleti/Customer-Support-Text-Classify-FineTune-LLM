@@ -16,7 +16,7 @@ class TrainingDataSplitterTask(TrainingPipelineTask):
     Configuration (.env):
         TRAINING_DATASET_TRAIN_RATIO=80
         TRAINING_DATASET_TEST_RATIO=20
-        TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV=category,text
+        TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV=category,text
     """
 
     def __init__(self):
@@ -31,51 +31,55 @@ class TrainingDataSplitterTask(TrainingPipelineTask):
 
         excels_worksheets_as_dfs_list = req_dto.training_data_dataframes
         if not excels_worksheets_as_dfs_list:
-            LOGGER.error("❌ No training_data_dataframes found in req_dto.")
+            LOGGER.error("No training_data_dataframes found in req_dto.")
             return WfResponses.FAILURE
 
-        # --- Configuration driven ratios ---
+        # --- Config ratios ---
         train_ratio = AppConfigs.get_instance().get_int("TRAINING_DATASET_TRAIN_RATIO", 80)
         test_ratio = AppConfigs.get_instance().get_int("TRAINING_DATASET_TEST_RATIO", 20)
-
         total_ratio = train_ratio + test_ratio
         if total_ratio != 100:
-            LOGGER.warning(f"⚠️ TRAINING_DATASET_TRAIN_RATIO + TRAINING_DATASET_TEST_RATIO != 100 (got {total_ratio}). Normalizing ratios automatically.")
+            LOGGER.warning(
+                f"TRAINING_DATASET_TRAIN_RATIO + TRAINING_DATASET_TEST_RATIO != 100 (got {total_ratio}). Normalizing ratios.")
             train_ratio = (train_ratio / total_ratio) * 100
             test_ratio = (test_ratio / total_ratio) * 100
 
         train_fraction = train_ratio / 100.0
         test_fraction = test_ratio / 100.0
-
         LOGGER.info(f"Configured Train/Test Split → Train: {train_ratio}%, Test: {test_ratio}%")
 
-        # --- Column(s) to use for label mapping consistency ---
+        # --- Label columns ---
         label2ids_col_names_csv = AppConfigs.get_instance().get_str(
-            "TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV", "category"
+            "TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV", "category"
         )
         label2ids_col_names = [col.strip() for col in label2ids_col_names_csv.split(",")]
 
-        # --- Process each workbook/sheet ---
+        # --- Split each workbook/sheet ---
         for workbook in excels_worksheets_as_dfs_list:
             excel_file_name = workbook.get("file_name")
             sheets_dict = workbook.get("sheets", {})
 
             for sheet_name, sheet_df in sheets_dict.items():
+                # 🧩 Defensive type check
+                if isinstance(sheet_df, dict):
+                    # already processed earlier; pull original DataFrame if stored under "data"
+                    sheet_df = sheet_df.get("data", None)
+                    if sheet_df is None or not isinstance(sheet_df, pd.DataFrame):
+                        LOGGER.warning(f"Sheet '{sheet_name}' in '{excel_file_name}' is not a DataFrame — skipping.")
+                        continue
+
                 if sheet_df.empty:
-                    LOGGER.warning(f"Skipping empty sheet '{sheet_name}' in file '{excel_file_name}'.")
+                    LOGGER.warning(f"Skipping empty sheet '{sheet_name}' in '{excel_file_name}'.")
                     continue
 
                 LOGGER.info(f"Splitting file: {excel_file_name}, sheet: {sheet_name}")
 
                 for label_col in label2ids_col_names:
                     if label_col not in sheet_df.columns:
-                        LOGGER.warning(f"⚠️ Column '{label_col}' not found in sheet '{sheet_name}' → skipping.")
+                        LOGGER.warning(f"Column '{label_col}' not found in sheet '{sheet_name}' → skipping.")
                         continue
 
-                    df = sheet_df.copy()
-                    df = df.sample(frac=1, random_state=42).reset_index(drop=True)  # shuffle
-
-                    # --- Stratified split per category if possible ---
+                    df = sheet_df.sample(frac=1, random_state=42).reset_index(drop=True)  # shuffle
                     train_splits, test_splits = [], []
                     unique_labels = df[label_col].unique().tolist()
 
@@ -90,11 +94,12 @@ class TrainingDataSplitterTask(TrainingPipelineTask):
                         train_splits.append(train_part)
                         test_splits.append(test_part)
 
-                    train_df = pd.concat(train_splits, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-                    test_df = pd.concat(test_splits, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+                    train_df = pd.concat(train_splits, ignore_index=True).sample(frac=1, random_state=42).reset_index(
+                        drop=True)
+                    test_df = pd.concat(test_splits, ignore_index=True).sample(frac=1, random_state=42).reset_index(
+                        drop=True)
 
-                    # --- Store back in req_dto structure ---
-                    split_key = f"{label_col}_split"
+                    # 🧩 Store new dict but keep original DF under "data"
                     sheets_dict[sheet_name] = {
                         "data": sheet_df,
                         "train_df": train_df,
@@ -111,3 +116,4 @@ class TrainingDataSplitterTask(TrainingPipelineTask):
 
         LOGGER.info("COMPLETED TrainingDataSplitterTask execution.")
         return WfResponses.SUCCESS
+

@@ -4,54 +4,44 @@
       "name": "CustomerSupportFineTuningTrainingPipeline",
       "tasks": [
         {
-          "purpose": "Reads env file configurations, training parameters, and other necessary settings for the training pipeline.",
           "task_name": "training_configs_loader",
           "class_path": "training.wf_tasks.setup.training_configs_loader_task.TrainingConfigsLoaderTask"
         },
         {
-          "purpose": "loads Excel → sheets → DataFrames",
           "task_name": "training_data_excels_data_loader",
           "class_path": "training.wf_tasks.data_loaders.aws_excel_loader.TrainingDataExcelsDataLoaderTask"
         },
         {
-          "purpose": "label2id, id2label per sheet",
           "task_name": "training_data_labels_mapper",
           "class_path": "training.wf_tasks.cleansing.training_data_labels_mapper.TrainingDataLabelsMapperTask"
         },
         {
-          "purpose": "Splits each worksheet's DataFrame into train/test subsets using configurable ratios",
+          "task_name": "core_training_wf",
+          "class_path": "training.wf_tasks.modeling.core_training_wf.CoreTrainingWF"
+        },
+        {
           "task_name": "training_data_splitter",
-          "class_path": "training.wf_tasks.modeling.training_data_splitter.TrainingDataSplitterTask"
+          "class_path": "training.wf_tasks.modeling.training_data_splitter.TrainingDataSplitterTask",
+          "is_belongs_to_task": true,
+          "belongs_to_list": ["core_training_wf"]
         },
         {
-          "purpose": "Tokenizes all configured text columns (from .env) for every worksheet.",
           "task_name": "training_data_tokenizer",
-          "class_path": "training.wf_tasks.modeling.training_data_tokenizer.TrainingTokenizerTask"
+          "class_path": "training.wf_tasks.modeling.training_data_tokenizer.TrainingTokenizerTask",
+          "is_belongs_to_task": true,
+          "belongs_to_list": ["core_training_wf"]
         },
         {
-          "purpose": "Fine-tunes DistilBERT (or configured model) iteratively for each Excel sheet.",
           "task_name": "training_model_fine_tune",
-          "class_path": "training.wf_tasks.modeling.training_data_fine_tuning.TrainingModelFineTuneTask"
+          "class_path": "training.wf_tasks.modeling.training_data_fine_tuning.TrainingModelFineTuneTask",
+          "is_belongs_to_task": true,
+          "belongs_to_list": ["core_training_wf"]
         },
         {
-          "task_name": "data_preprocessing",
-          "class_path": "training.wf_tasks.cleansing.data_preprocessing_task.DataPreProcessingTask"
-        },
-        {
-          "task_name": "feature_engineering",
-          "class_path": "training.wf_tasks.evaluation.feature_engineering_task.FeatureEngineeringTask"
-        },
-        {
-          "task_name": "model_training",
-          "class_path": "training.wf_tasks.modeling.model_training_task.ModelTrainingTask"
-        },
-        {
-          "task_name": "model_evaluation",
-          "class_path": "training.wf_tasks.evaluation.model_evaluation_task.ModelEvaluationTask"
-        },
-        {
-          "task_name": "model_deployment",
-          "class_path": "training.wf_tasks.deployment.model_deployment_task.ModelDeploymentTask"
+          "task_name": "training_data_leakage_checker",
+          "class_path": "training.wf_tasks.modeling.validation.training_data_leakage_checker.TrainingDataLeakageCheckerTask",
+          "is_belongs_to_task": true,
+          "belongs_to_list": ["core_training_wf"]
         }
       ]
     }

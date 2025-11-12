@@ -24,7 +24,7 @@ class TrainingDataLabelsMapperTask(TrainingPipelineTask):
         excels_worksheets_as_dfs_list = req_dto.training_data_dataframes
 
         label2ids_col_names_csv = AppConfigs.get_instance().get_str(
-            "TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV", "category")
+            "TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV", "category")
         label2ids_col_names = [col_name.strip() for col_name in label2ids_col_names_csv.split(",")]
 
         # Example excel_sheets_columns_mappings_dict = {"excel_file_name": {"sheet_name": {"a_label2id_col_name": {}}}}

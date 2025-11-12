@@ -3,11 +3,19 @@ from overrides import overrides
 from training.dtos import TrainingReqDTO, TrainingResDTO
 from app_common.app_constants import WfResponses
 from app_common.app_configs_util import AppConfigs
-from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments
-from sklearn.metrics import accuracy_score
+from transformers import (
+    AutoModelForSequenceClassification,
+    Trainer,
+    TrainingArguments,
+    pipeline,
+)
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+from packaging import version
+import transformers
+import numpy as np
+import torch
 import os
 import json
-import numpy as np
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -15,22 +23,11 @@ LOGGER = logging.getLogger(__name__)
 
 class TrainingModelFineTuneTask(TrainingPipelineTask):
     """
-    Fine-tunes a Hugging Face model for each sheet/column combination
-    dynamically driven by .env configuration.
+    Fine-tunes one transformer model per worksheet.
 
-    Expected Configuration (.env):
-
-        MODEL_NAME=distilbert-base-uncased
-        MODEL_NAME_DIR=customer-support-distilbert
-        MODEL_VERSION=1.0.0
-        MODELS_OUTPUT_DIR=../outputs/model_outputs
-        TRAIN_NUM_EPOCHS=12
-        TRAIN_BATCH_SIZE=2
-        EVAL_BATCH_SIZE=4
-        TRAIN_WARMUP_STEPS=200
-        TRAIN_LEARNING_RATE=8e-5
-        TRAIN_WEIGHT_DECAY=0.01
-        TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV=category
+    - Uses tokenized datasets from TrainingTokenizerTask
+    - One model per sheet (or workbook)
+    - Saves weights, tokenizer, label mappings, metrics, and inference samples
     """
 
     def __init__(self):
@@ -39,190 +36,256 @@ class TrainingModelFineTuneTask(TrainingPipelineTask):
     def name(self) -> str:
         return "training_model_fine_tune"
 
-    # --- Metrics ------------------------------------------------------------
-    @staticmethod
-    def compute_metrics(eval_pred):
-        predictions, labels = eval_pred
-        predictions = np.argmax(predictions, axis=1)
-        accuracy = accuracy_score(labels, predictions)
-        return {"accuracy": accuracy}
+    # ----------------------------------------------------------------------
+    # Utility / Helper Methods
+    # ----------------------------------------------------------------------
 
-    # --- Core Execution -----------------------------------------------------
+    def _load_env_configs(self):
+        """Load model, directory, and training hyperparameter configs."""
+        cfg = {}
+        cfg["model_name"] = AppConfigs.get_instance().get_str("MODEL_NAME", "distilbert-base-uncased")
+        cfg["model_version"] = AppConfigs.get_instance().get_str("MODEL_VERSION", "1.0.0")
+        cfg["model_dir_name"] = AppConfigs.get_instance().get_str("MODEL_NAME_DIR", "customer-support-distilbert")
+        cfg["output_root"] = AppConfigs.get_instance().get_str("MODELS_OUTPUT_DIR", "../outputs/model_outputs")
+
+        label_cols_csv = AppConfigs.get_instance().get_str("TRAINING_DATASET_CLASSIFICATION_COLUMN_NAMES_CSV", "category")
+        cfg["label_cols"] = [c.strip() for c in label_cols_csv.split(",") if c.strip()]
+
+        training_cols_csv = AppConfigs.get_instance().get_str(
+            "DATASET_COLUMN_NAMES_FOR_TRAINING", "category,sample_question,sample_question_type"
+        )
+        cfg["training_cols"] = [c.strip() for c in training_cols_csv.split(",") if c.strip()]
+
+        cfg["num_epochs"] = AppConfigs.get_instance().get_int("TRAIN_NUM_EPOCHS", 3)
+        cfg["train_batch_size"] = AppConfigs.get_instance().get_int("TRAIN_BATCH_SIZE", 4)
+        cfg["eval_batch_size"] = AppConfigs.get_instance().get_int("EVAL_BATCH_SIZE", 8)
+        cfg["warmup_steps"] = AppConfigs.get_instance().get_int("TRAIN_WARMUP_STEPS", 100)
+        cfg["learning_rate"] = float(AppConfigs.get_instance().get_str("TRAIN_LEARNING_RATE", "5e-5"))
+        cfg["weight_decay"] = float(AppConfigs.get_instance().get_str("TRAIN_WEIGHT_DECAY", "0.01"))
+
+        return cfg
+
+    def _compute_metrics(self, eval_pred):
+        """Compute accuracy and weighted F1."""
+        predictions, labels = eval_pred
+        preds = np.argmax(predictions, axis=1)
+        return {
+            "accuracy": accuracy_score(labels, preds),
+            "f1": f1_score(labels, preds, average="weighted"),
+        }
+
+    def _build_training_args(self, model_output_dir, cfg):
+        """Build version-safe TrainingArguments block."""
+        transformers_version = version.parse(transformers.__version__)
+
+        common_args = dict(
+            output_dir=model_output_dir,
+            num_train_epochs=cfg["num_epochs"],
+            per_device_train_batch_size=cfg["train_batch_size"],
+            per_device_eval_batch_size=cfg["eval_batch_size"],
+            warmup_steps=cfg["warmup_steps"],
+            weight_decay=cfg["weight_decay"],
+            learning_rate=cfg["learning_rate"],
+            logging_dir=os.path.join(model_output_dir, "logs"),
+            logging_steps=50,
+            gradient_accumulation_steps=2,
+            fp16=torch.cuda.is_available(),
+            report_to="none",
+            disable_tqdm=False,
+        )
+
+        try:
+            if transformers_version >= version.parse("4.10.0"):
+                return TrainingArguments(
+                    evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    save_total_limit=2,
+                    **common_args,
+                )
+            else:
+                return TrainingArguments(
+                    do_eval=True,
+                    save_steps=500,
+                    save_total_limit=2,
+                    **common_args,
+                )
+        except TypeError:
+            # For very old versions — absolute fallback
+            return TrainingArguments(**common_args)
+
+    def _encode_labels(self, dataset, label_col, label2id):
+        """Attach integer label IDs to the dataset."""
+        def encode(example):
+            return {"labels": label2id.get(example[label_col], -1)}
+
+        return dataset.map(encode)
+
+    def _save_json(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    # ----------------------------------------------------------------------
+    # Main Execution
+    # ----------------------------------------------------------------------
+
     @overrides
     def execute(self, req_dto: TrainingReqDTO, res_dto: TrainingResDTO) -> int:
         LOGGER.info("STARTED TrainingModelFineTuneTask execution.")
 
-        # ---------------------------------------------------------------------
-        # Config-driven model + hyperparameters
-        # ---------------------------------------------------------------------
-        model_base = AppConfigs.get_instance().get_str("MODEL_NAME", "distilbert-base-uncased")
-        model_name_dir = AppConfigs.get_instance().get_str("MODEL_NAME_DIR", "customer-support-distilbert")
-        model_version = AppConfigs.get_instance().get_str("MODEL_VERSION", "1.0.0")
-        output_root = AppConfigs.get_instance().get_str("MODELS_OUTPUT_DIR", "../outputs/model_outputs")
+        if not req_dto.training_data_dataframes:
+            LOGGER.error("No training_data_dataframes found in req_dto.")
+            return WfResponses.FAILURE
 
-        num_epochs = AppConfigs.get_instance().get_int("TRAIN_NUM_EPOCHS", 12)
-        train_batch_size = AppConfigs.get_instance().get_int("TRAIN_BATCH_SIZE", 2)
-        eval_batch_size = AppConfigs.get_instance().get_int("EVAL_BATCH_SIZE", 4)
-        warmup_steps = AppConfigs.get_instance().get_int("TRAIN_WARMUP_STEPS", 200)
-        learning_rate = float(AppConfigs.get_instance().get_str("TRAIN_LEARNING_RATE", "8e-5"))
-        weight_decay = float(AppConfigs.get_instance().get_str("TRAIN_WEIGHT_DECAY", "0.01"))
-
-        label_cols_csv = AppConfigs.get_instance().get_str(
-            "TRAINING_DATASET_LABELS2IDS_COLUMN_NAMES_CSV", "category"
-        )
-        label_cols = [c.strip() for c in label_cols_csv.split(",") if c.strip()]
-
-        LOGGER.info(f"Model Base: {model_base}")
-        LOGGER.info(f"Version: {model_version}")
-        LOGGER.info(f"Output Root: {output_root}")
-        LOGGER.info(f"Label Columns: {label_cols}")
+        cfg = self._load_env_configs()
 
         tokenizer = getattr(req_dto, "tokenizer", None)
         if tokenizer is None:
-            LOGGER.error("Tokenizer not found in req_dto. Ensure TrainingTokenizerTask ran successfully.")
-            return WfResponses.FAILURE
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"])
 
-        # ---------------------------------------------------------------------
-        # Process each workbook
-        # ---------------------------------------------------------------------
+        LOGGER.info(f"Model Base: {cfg['model_name']}")
+        LOGGER.info(f"Output Root: {cfg['output_root']}")
+        LOGGER.info(f"Version: {cfg['model_version']}")
+        LOGGER.info(f"Training Columns: {cfg['training_cols']}")
+        LOGGER.info(f"Label Columns: {cfg['label_cols']}")
+
+        master_summary = {
+            "model_base": cfg["model_name"],
+            "model_version": cfg["model_version"],
+            "output_root": cfg["output_root"],
+            "workbooks": [],
+        }
+
         for workbook in req_dto.training_data_dataframes:
             excel_file_name = workbook.get("file_name")
+            workbook_summary = {"workbook_name": excel_file_name, "sheets": []}
             sheets_dict = workbook.get("sheets", {})
 
             LOGGER.info(f"Starting fine-tuning for workbook: {excel_file_name}")
 
             for sheet_name, sheet_data in sheets_dict.items():
-                tokenized_datasets = sheet_data.get("tokenized_datasets", {})
-                if not tokenized_datasets:
-                    LOGGER.warning(f"No tokenized datasets for {sheet_name}. Skipping.")
+                tokenized_sets = sheet_data.get("tokenized_datasets", {})
+                train_ds = tokenized_sets.get("tokenized_train_dataset") or tokenized_sets.get("train")
+                test_ds = tokenized_sets.get("tokenized_test_dataset") or tokenized_sets.get("test")
+
+                if not train_ds or not test_ds:
+                    LOGGER.warning(f"Incomplete tokenized datasets for {excel_file_name}->{sheet_name}. Skipping.")
                     continue
 
-                for col_name, ds_info in tokenized_datasets.items():
-                    train_ds = ds_info.get("tokenized_train_dataset")
-                    test_ds = ds_info.get("tokenized_test_dataset")
+                # Detect label column
+                label_col = next((lc for lc in cfg["label_cols"] if lc in train_ds.column_names), None)
+                if not label_col:
+                    LOGGER.warning(f"No label column found in {sheet_name}. Skipping.")
+                    continue
 
-                    if train_ds is None or test_ds is None:
-                        LOGGER.warning(f"Missing tokenized datasets for {sheet_name}->{col_name}. Skipping.")
-                        continue
+                # Map labels to IDs
+                unique_labels = sorted(set(train_ds[label_col]))
+                label2id = {v: i for i, v in enumerate(unique_labels)}
+                id2label = {i: v for v, i in label2id.items()}
 
-                    # --- Find appropriate label column ---
-                    active_label_col = None
-                    for lbl in label_cols:
-                        if lbl in train_ds.column_names:
-                            active_label_col = lbl
-                            break
-                    if not active_label_col:
-                        LOGGER.warning(f"No label column found in tokenized dataset for {sheet_name}->{col_name}.")
-                        continue
+                train_ds = self._encode_labels(train_ds, label_col, label2id)
+                test_ds = self._encode_labels(test_ds, label_col, label2id)
 
-                    # --- Get label mappings from req_dto.training_data_labels_mapping ---
-                    labels_mapping = (
-                        req_dto.training_data_labels_mapping
-                        .get(excel_file_name, {})
-                        .get(sheet_name, {})
-                        .get(active_label_col, {})
-                    )
+                model_output_dir = os.path.join(
+                    cfg["output_root"],
+                    cfg["model_dir_name"],
+                    cfg["model_version"],
+                    excel_file_name.replace(".xlsx", ""),
+                    sheet_name,
+                )
+                os.makedirs(model_output_dir, exist_ok=True)
+                LOGGER.info(f"Fine-tuning model for {excel_file_name}->{sheet_name} → {model_output_dir}")
 
-                    label2ids = labels_mapping.get("label2ids_map", {})
-                    ids2label = labels_mapping.get("ids2label_map", {})
-
-                    if not label2ids or not ids2label:
-                        LOGGER.warning(f"No label mappings found for {sheet_name}->{active_label_col}. Skipping.")
-                        continue
-
-                    # --- Convert string labels → numeric IDs safely ---
-                    def map_labels(example):
-                        value = example[active_label_col]
-                        if isinstance(value, list):
-                            return {active_label_col: [label2ids.get(v, 0) for v in value]}
-                        else:
-                            return {active_label_col: label2ids.get(value, 0)}
-
-                    train_ds = train_ds.map(map_labels)
-                    test_ds = test_ds.map(map_labels)
-
-                    # --- Rename to 'labels' (required by Trainer) ---
-                    train_ds = train_ds.rename_column(active_label_col, "labels")
-                    test_ds = test_ds.rename_column(active_label_col, "labels")
-
-                    # --- Output directory per workbook/sheet/column ---
-                    model_out_dir = os.path.join(
-                        output_root,
-                        model_name_dir,
-                        model_version,
-                        excel_file_name.replace(".xlsx", ""),
-                        sheet_name,
-                        col_name,
-                    )
-                    os.makedirs(model_out_dir, exist_ok=True)
-
-                    LOGGER.info(
-                        f"Fine-tuning model for {excel_file_name}->{sheet_name}->{col_name} "
-                        f"with label column '{active_label_col}' → {model_out_dir}"
-                    )
-
-                    # --- Initialize model ---
+                try:
+                    # Load model
                     model = AutoModelForSequenceClassification.from_pretrained(
-                        model_base,
-                        num_labels=len(label2ids),
-                        id2label=ids2label,
-                        label2id=label2ids,
+                        cfg["model_name"],
+                        num_labels=len(unique_labels),
+                        id2label=id2label,
+                        label2id=label2id,
                     )
 
-                    # --- Training arguments ---
-                    training_args = TrainingArguments(
-                        output_dir=model_out_dir,
-                        num_train_epochs=num_epochs,
-                        per_device_train_batch_size=train_batch_size,
-                        per_device_eval_batch_size=eval_batch_size,
-                        warmup_steps=warmup_steps,
-                        weight_decay=weight_decay,
-                        learning_rate=learning_rate,
-                        logging_dir=os.path.join(model_out_dir, "logs"),
-                        logging_steps=10,
-                        save_steps=100,
-                        eval_steps=100,
-                        seed=42,
-                        remove_unused_columns=False,
-                        dataloader_pin_memory=False,
-                        dataloader_num_workers=0,
-                    )
-
+                    # Build trainer
+                    training_args = self._build_training_args(model_output_dir, cfg)
                     trainer = Trainer(
                         model=model,
                         args=training_args,
                         train_dataset=train_ds,
                         eval_dataset=test_ds,
                         tokenizer=tokenizer,
-                        compute_metrics=self.compute_metrics,
+                        compute_metrics=self._compute_metrics,
                     )
 
-                    # --- Train + Save ---
-                    try:
-                        LOGGER.info(f"Training started for {excel_file_name}->{sheet_name}->{col_name}")
-                        trainer.train()
-                        LOGGER.info(f"Training completed for {excel_file_name}->{sheet_name}->{col_name}")
-                    except Exception as e:
-                        LOGGER.exception(f"Training failed for {excel_file_name}->{sheet_name}->{col_name}: {e}")
-                        continue
+                    # Train + Save
+                    trainer.train()
+                    trainer.save_model(model_output_dir)
+                    tokenizer.save_pretrained(model_output_dir)
 
-                    model.save_pretrained(model_out_dir)
-                    tokenizer.save_pretrained(model_out_dir)
+                    # Save label mapping
+                    self._save_json(
+                        os.path.join(model_output_dir, "label_mapping.json"),
+                        {"label2id": label2id, "id2label": id2label, "num_labels": len(unique_labels)},
+                    )
 
-                    # Save mappings
-                    mappings_path = os.path.join(model_out_dir, "label_mapping.json")
-                    with open(mappings_path, "w") as f:
-                        json.dump(
-                            {
-                                "label2ids": label2ids,
-                                "ids2label": ids2label,
-                                "num_labels": len(label2ids),
-                            },
-                            f,
-                            indent=2,
-                        )
+                    # Evaluate
+                    eval_results = trainer.evaluate()
+                    preds = np.argmax(trainer.predict(test_ds).predictions, axis=1)
+                    class_report = classification_report(
+                        test_ds["labels"],
+                        preds,
+                        target_names=[str(x) for x in unique_labels],
+                        output_dict=True,
+                    )
 
-                    LOGGER.info(f"Saved model and mappings to {model_out_dir}")
+                    self._save_json(
+                        os.path.join(model_output_dir, "metrics_summary.json"),
+                        {
+                            "workbook": excel_file_name,
+                            "sheet": sheet_name,
+                            "accuracy": eval_results.get("eval_accuracy"),
+                            "f1": eval_results.get("eval_f1"),
+                            "per_class": class_report,
+                        },
+                    )
 
+                    # Inference samples
+                    pipe = pipeline("text-classification", model=model_output_dir, tokenizer=model_output_dir)
+                    test_texts = test_ds["__combined_text__"][:5] if "__combined_text__" in test_ds.column_names else []
+                    inference_samples = [
+                        {
+                            "text": t[:250],
+                            "predicted_label": (pred := pipe(t[:250])[0])["label"],
+                            "confidence": round(pred["score"], 4),
+                        }
+                        for t in test_texts
+                    ]
+                    self._save_json(os.path.join(model_output_dir, "inference_samples.json"), inference_samples)
+
+                    workbook_summary["sheets"].append({
+                        "sheet_name": sheet_name,
+                        "model_output_dir": model_output_dir,
+                        "num_labels": len(unique_labels),
+                        "accuracy": eval_results.get("eval_accuracy"),
+                        "f1": eval_results.get("eval_f1"),
+                        "num_train_samples": len(train_ds),
+                        "num_test_samples": len(test_ds),
+                    })
+
+                    LOGGER.info(f"Completed fine-tuning and evaluation for {sheet_name}")
+
+                except Exception as e:
+                    LOGGER.exception(f"Training failed for {excel_file_name}->{sheet_name}: {e}")
+                    continue
+
+            master_summary["workbooks"].append(workbook_summary)
+
+        # Save master summary
+        master_summary_path = os.path.join(
+            cfg["output_root"], cfg["model_dir_name"], cfg["model_version"], "training_master_summary.json"
+        )
+        self._save_json(master_summary_path, master_summary)
+
+        LOGGER.info(f"Master summary saved → {master_summary_path}")
         LOGGER.info("COMPLETED TrainingModelFineTuneTask execution.")
         return WfResponses.SUCCESS

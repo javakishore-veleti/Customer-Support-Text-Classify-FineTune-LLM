@@ -39,7 +39,7 @@ class TaskRegistry:
         LOGGER.info(f"module_name '{module_name}' module {module}")
 
         if not issubclass(cls_ref, TrainingPipelineTask):
-            raise TypeError(f"{class_name} must inherit from TrainingWfTask.")
+            raise TypeError(f"{class_name} must inherit from TrainingPipelineTask.")
         task_instance = cls_ref()
         self.register(task_instance.name(), cls_ref)
         LOGGER.info(f"Dynamically loaded and registered task: {class_name}")
@@ -47,3 +47,21 @@ class TaskRegistry:
 
     def all_tasks(self):
         return list(self._tasks.keys())
+
+    # ✅ Added helper methods for loader compatibility
+    @classmethod
+    def get_instance(cls):
+        """Global accessor for the singleton instance."""
+        if cls._instance is None:
+            cls._instance = TaskRegistry()
+        return cls._instance
+
+    @classmethod
+    def has_task(cls, name: str) -> bool:
+        """Check if a task name is already registered."""
+        return name in cls.get_instance()._tasks
+
+    @classmethod
+    def get_task_class(cls, name: str) -> Type[TrainingPipelineTask]:
+        """Retrieve a task class for the given name (class-level access)."""
+        return cls.get_instance().get(name)
