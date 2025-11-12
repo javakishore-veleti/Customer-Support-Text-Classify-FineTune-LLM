@@ -172,7 +172,7 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
         with open(os.path.join(output_dir, "clustering_summary.json"), "w") as f:
             json.dump(summary, f, indent=2)
 
-        LOGGER.info(f"[{sheet_name}] ✅ Completed clustering into {summary['clusters']} clusters.")
+        LOGGER.info(f"[{sheet_name}] Completed clustering into {summary['clusters']} clusters.")
         return summary
 
     # ============================================================
@@ -198,7 +198,7 @@ class TrainingDataClusteringTask(TrainingPipelineTask):
         for excel_file in excel_files:
             excel_path = os.path.join(config["excel_dir"], excel_file)
             workbook_name = os.path.splitext(excel_file)[0]
-            LOGGER.info(f"📘 Processing workbook: {excel_file}")
+            LOGGER.info(f"Processing workbook: {excel_file}")
 
             sheets_dict = pd.read_excel(excel_path, sheet_name=None)
             for sheet_name, df in sheets_dict.items():
